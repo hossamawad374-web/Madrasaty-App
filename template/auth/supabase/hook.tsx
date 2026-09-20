@@ -23,6 +23,10 @@ export function useAuth(): AuthContextType {
         error: 'Auth function not enabled, please check configuration', 
         user: null 
       }),
+      createAccount: async (): Promise<SignUpResult> => ({ 
+        error: 'Auth function not enabled, please check configuration', 
+        user: null 
+      }),
       signUpWithPassword: async (): Promise<SignUpResult> => ({ 
         error: 'Auth function not enabled, please check configuration', 
         user: null 
@@ -72,6 +76,19 @@ export function useAuth(): AuthContextType {
         error: 'Login failed',
         user: null 
       };
+    } finally {
+      context.setOperationLoading(false);
+    }
+  };
+
+
+  const createAccount = async (email: string, password: string, metadata?: Record<string, any>): Promise<SignUpResult> => {
+    context.setOperationLoading(true);
+    try {
+      return await authService.createAccount(email, password, metadata);
+    } catch (error) {
+      console.warn('[Template:useAuth] createAccount exception:', error);
+      return { error: 'Account creation failed', user: null };
     } finally {
       context.setOperationLoading(false);
     }
@@ -160,6 +177,7 @@ export function useAuth(): AuthContextType {
     setOperationLoading: context.setOperationLoading,
     sendOTP,
     verifyOTPAndLogin,
+    createAccount,
     signUpWithPassword,
     signInWithPassword,
     signInWithGoogle,
