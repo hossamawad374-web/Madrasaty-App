@@ -51,7 +51,7 @@ function toGeminiBody(request: AITutorRequest) {
       role: message.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: message.content }],
     })),
-    generationConfig: { temperature: 0.5, maxOutputTokens: 1500, topP: 0.9 },
+    generationConfig: { maxOutputTokens: 1500 },
     safetySettings: [
       { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
       { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
