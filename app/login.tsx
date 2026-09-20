@@ -33,7 +33,8 @@ const { width } = Dimensions.get('window');
 
 // ─── Auth error messages (Arabic) ────────────────────────────────────────────
 function mapAuthError(error: string): string {
-  const e = error.toLowerCase();
+  const e = (error || '').toLowerCase();
+
   if (e.includes('invalid login credentials') || e.includes('invalid credentials'))
     return 'البريد الإلكتروني أو كلمة المرور غير صحيحة.';
   if (e.includes('email not confirmed'))
@@ -43,12 +44,21 @@ function mapAuthError(error: string): string {
   if (e.includes('weak password') || e.includes('password should be'))
     return 'كلمة المرور ضعيفة. يجب أن تكون 6 أحرف على الأقل.';
   if (e.includes('rate limit') || e.includes('too many'))
-    return 'طلبات كثيرة. انتظر لحظة وحاول مجدداً.';
+    return 'تم تجاوز حد المحاولات. انتظر قليلاً ثم حاول مرة أخرى.';
+  if (e.includes('email signups are disabled') || e.includes('signups not allowed'))
+    return 'تسجيل الحسابات بالبريد الإلكتروني غير مفعّل في إعدادات المصادقة.';
+  if (e.includes('email provider') || e.includes('smtp'))
+    return 'خدمة إرسال البريد الإلكتروني غير مهيأة في Supabase لهذا المشروع.';
+  if (e.includes('not authorized') || e.includes('not allowed'))
+    return 'عنوان البريد الإلكتروني غير مسموح له باستلام رسائل المصادقة من المشروع.';
+  if (e.includes('redirect url') || e.includes('redirect_to'))
+    return 'إعدادات رابط العودة للمصادقة في Supabase غير صحيحة.';
   if (e.includes('network') || e.includes('fetch'))
-    return 'تحقق من اتصالك بالإنترنت وأعد المحاولة.';
+    return 'تعذر الاتصال بخدمة المصادقة. تحقق من الإنترنت ثم حاول مرة أخرى.';
   if (e.includes('otp') || e.includes('token'))
     return 'رمز التحقق غير صحيح أو منتهي الصلاحية.';
-  return 'حدث خطأ. يرجى المحاولة مرة أخرى.';
+
+  return 'تعذر إرسال رمز التحقق: ' + error;
 }
 
 // ─── Register Steps ───────────────────────────────────────────────────────────
@@ -355,8 +365,8 @@ function RegisterForm({ onLoginSwitch }: { onLoginSwitch: () => void }) {
 
   const handleVerifyOtp = async () => {
     setOtpError('');
-    if (otp.length !== 4) {
-      setOtpError('أدخل الرمز المكوّن من 4 أرقام');
+    if (otp.length !== 6) {
+      setOtpError('أدخل الرمز المكوّن من 6 أرقام');
       return;
     }
     const { error, user } = await verifyOTPAndLogin(email.trim(), otp, { password });
@@ -488,7 +498,7 @@ function RegisterForm({ onLoginSwitch }: { onLoginSwitch: () => void }) {
           </View>
           <Text style={styles.formTitle}>تأكيد البريد الإلكتروني</Text>
           <Text style={styles.otpDesc}>
-            أرسلنا رمز تحقق مكوّن من 4 أرقام إلى{'\n'}
+            أرسلنا رمز تحقق مكوّن من 6 أرقام إلى{'\n'}
             <Text style={styles.otpEmail}>{email}</Text>
           </Text>
 
@@ -496,9 +506,9 @@ function RegisterForm({ onLoginSwitch }: { onLoginSwitch: () => void }) {
             label="رمز التحقق"
             value={otp}
             onChangeText={setOtp}
-            placeholder="أدخل الرمز المكوّن من 4 أرقام"
+            placeholder="أدخل الرمز المكوّن من 6 أرقام"
             keyboardType="number-pad"
-            maxLength={4}
+            maxLength={6}
             leftIcon="dialpad"
             error={otpError}
             textContentType="oneTimeCode"
