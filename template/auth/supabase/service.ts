@@ -174,7 +174,7 @@ export class AuthService {
         return { error: 'Network connection timeout, please check network and retry', errorType: 'timeout' };
       }
       
-      return { error: 'Failed to send verification code', errorType: 'network' };
+      return { error: errorMessage, errorType: 'network' };
     }
   }
 
