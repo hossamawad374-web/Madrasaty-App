@@ -293,6 +293,67 @@ export class AuthService {
     }
   }
 
+
+  async createAccount(email: string, password: string, metadata: Record<string, any> = {}): Promise<SignUpResult> {
+    try {
+      const client = this.supabase;
+      const response = await withTimeout(
+        fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/create-account`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
+            'X-Madrasaty-App': '1',
+          },
+          body: JSON.stringify({ email: email.trim().toLowerCase(), password, metadata }),
+        }),
+        TIMEOUT_CONFIG.AUTH_OPERATIONS,
+        'CreateAccount'
+      );
+
+      let payload: any = null;
+      try { payload = await response.json(); } catch {}
+
+      if (!response.ok) {
+        return {
+          error: payload?.error || 'Account creation failed',
+          user: null,
+          errorType: response.status === 429 ? 'timeout' : 'business',
+        };
+      }
+
+      if (!payload?.session?.access_token || !payload?.session?.refresh_token || !payload?.user?.id) {
+        return { error: 'Account creation returned an invalid session', user: null, errorType: 'network' };
+      }
+
+      const { error: sessionError } = await client.auth.setSession({
+        access_token: payload.session.access_token,
+        refresh_token: payload.session.refresh_token,
+      });
+
+      if (sessionError) {
+        return { error: sessionError.message, user: null, errorType: 'network' };
+      }
+
+      return {
+        user: {
+          id: payload.user.id,
+          email: payload.user.email || email,
+          username: payload.user.username || email.split('@')[0],
+          created_at: payload.user.created_at,
+          updated_at: payload.user.updated_at || payload.user.created_at,
+        },
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown createAccount error';
+      console.warn('[Template:AuthService] CreateAccount exception:', errorMessage);
+      if (errorMessage.includes('timeout')) {
+        return { error: 'Sign up timeout, please retry', user: null, errorType: 'timeout' };
+      }
+      return { error: 'Account creation failed', user: null, errorType: 'network' };
+    }
+  }
+
   async signUpWithPassword(email: string, password: string, metadata: Record<string, any> = {}): Promise<SignUpResult> {
     try {
       return await safeSupabaseOperation(async (client) => {
