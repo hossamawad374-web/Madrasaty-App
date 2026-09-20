@@ -53,8 +53,9 @@ export function useAuth(): AuthContextType {
       return result;
     } catch (error) {
       console.warn('[Template:useAuth] sendOTP exception:', error);
-      return { 
-        error: 'Failed to send verification code' 
+      const errorMessage = error instanceof Error ? error.message : 'Unknown sendOTP error';
+      return {
+        error: errorMessage
       };
     } finally {
       context.setOperationLoading(false);
