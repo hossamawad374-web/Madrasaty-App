@@ -50,6 +50,7 @@ export interface AuthContextType {
   setOperationLoading: (loading: boolean) => void;
   sendOTP: (email: string) => Promise<SendOTPResult>;
   verifyOTPAndLogin: (email: string, otp: string, options?: VerifyOTPOptions) => Promise<AuthResult>;
+  createAccount: (email: string, password: string, metadata?: Record<string, any>) => Promise<SignUpResult>;
   signUpWithPassword: (email: string, password: string, metadata?: Record<string, any>) => Promise<SignUpResult>;
   signInWithPassword: (email: string, password: string) => Promise<AuthResult>;
   signInWithGoogle: () => Promise<GoogleSignInResult>;
