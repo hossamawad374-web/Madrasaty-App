@@ -2,7 +2,3 @@
 # Authentication is checked in the function with Supabase Auth getUser so the
 # response contract remains consistent across legacy and asymmetric JWT projects.
 verify_jwt = true
-
-[functions.create-account]
-# Public registration endpoint; the function performs strict input validation and rate limiting.
-verify_jwt = false
