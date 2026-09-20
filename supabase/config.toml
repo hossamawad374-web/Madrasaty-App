@@ -1,0 +1,4 @@
+[functions.ai-tutor-v2]
+# Authentication is checked in the function with Supabase Auth getUser so the
+# response contract remains consistent across legacy and asymmetric JWT projects.
+verify_jwt = true

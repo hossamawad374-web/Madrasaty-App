@@ -23,6 +23,11 @@ export interface AIContext {
   stage?: string;
 }
 
+export interface TutorStreamError {
+  code: string;
+  message: string;
+}
+
 export type AIMode =
   | 'general'
   | 'explain'
@@ -59,21 +64,36 @@ export const aiTutorService = {
     context: AIContext | null,
     onChunk: (chunk: string) => void,
     onDone: (fullText: string) => void,
-    onError: (error: string) => void
+    onError: (error: TutorStreamError) => void,
+    signal?: AbortSignal
   ): Promise<void> {
     try {
       const supabase = getSupabaseClient();
       const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        onError({ code: 'UNAUTHENTICATED', message: 'سجّل الدخول أولاً لاستخدام المعلم الذكي.' });
+        return;
+      }
+      // getUser is a server-validated check; do not trust only locally persisted session data.
+      const { data: { user }, error: userError } = await supabase.auth.getUser(session.access_token);
+      if (userError || !user) {
+        onError({ code: 'UNAUTHENTICATED', message: 'انتهت الجلسة. سجّل الدخول مرة أخرى.' });
+        return;
+      }
 
+      const functionName = process.env.EXPO_PUBLIC_AI_TUTOR_FUNCTION_NAME ?? 'ai-tutor-v2';
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/ai-tutor`,
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/${functionName}`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session?.access_token ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
+            'Authorization': `Bearer ${session.access_token}`,
+            // This is the public Supabase project key, never a service-role key.
+            'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
           },
           body: JSON.stringify({ messages, context }),
+          signal,
         }
       );
 
@@ -84,7 +104,7 @@ export const aiTutorService = {
           const parsed = JSON.parse(text);
           if (parsed?.error) errMsg = parsed.error;
         } catch { /* silent */ }
-        onError(errMsg);
+        onError({ code: response.status === 401 ? 'UNAUTHENTICATED' : 'REQUEST_FAILED', message: errMsg });
         return;
       }
 
@@ -98,16 +118,17 @@ export const aiTutorService = {
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() ?? '';
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed.startsWith('data:')) continue;
-            const payload = trimmed.slice(5).trim();
-            if (payload === '[DONE]') { onDone(fullText); return; }
+          const frames = buffer.split(/\r?\n\r?\n/);
+          buffer = frames.pop() ?? '';
+          for (const frame of frames) {
+            const payload = frame.split(/\r?\n/).find((line) => line.startsWith('data:'))?.slice(5).trim();
+            if (!payload) continue;
             try {
               const parsed = JSON.parse(payload);
-              const delta = parsed?.choices?.[0]?.delta?.content ?? '';
+              if (parsed?.type === 'done') { onDone(fullText); return; }
+              if (parsed?.type === 'error') { onError(parsed); return; }
+              // Supports the V2 contract and the old OpenAI-compatible tutor during rollback.
+              const delta = parsed?.text ?? parsed?.choices?.[0]?.delta?.content ?? '';
               if (delta) { fullText += delta; onChunk(delta); }
             } catch { /* malformed line */ }
           }
@@ -115,14 +136,14 @@ export const aiTutorService = {
       } else {
         // Fallback for platforms without ReadableStream
         const text = await response.text();
-        for (const line of text.split('\n')) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith('data:')) continue;
-          const payload = trimmed.slice(5).trim();
-          if (payload === '[DONE]') break;
+        for (const frame of text.split(/\r?\n\r?\n/)) {
+          const payload = frame.split(/\r?\n/).find((line) => line.startsWith('data:'))?.slice(5).trim();
+          if (!payload) continue;
           try {
             const parsed = JSON.parse(payload);
-            const delta = parsed?.choices?.[0]?.delta?.content ?? '';
+            if (parsed?.type === 'done') break;
+            if (parsed?.type === 'error') { onError(parsed); return; }
+            const delta = parsed?.text ?? parsed?.choices?.[0]?.delta?.content ?? '';
             if (delta) { fullText += delta; onChunk(delta); }
           } catch { /* skip */ }
         }
@@ -130,8 +151,9 @@ export const aiTutorService = {
 
       onDone(fullText);
     } catch (err: any) {
+      if (err?.name === 'AbortError') return;
       console.error('[aiTutorService] streamMessage error:', err);
-      onError('حدث خطأ في الاتصال. تحقق من اتصالك بالإنترنت وأعد المحاولة.');
+      onError({ code: 'NETWORK_ERROR', message: 'حدث خطأ في الاتصال. تحقق من اتصالك بالإنترنت وأعد المحاولة.' });
     }
   },
 
@@ -221,25 +243,28 @@ export const aiTutorService = {
     userId: string,
     role: 'user' | 'assistant',
     content: string
-  ): Promise<void> {
+  ): Promise<{ error: string | null }> {
     try {
       const supabase = getSupabaseClient();
-      await supabase.from('ai_messages').insert({
+      const { error: messageError } = await supabase.from('ai_messages').insert({
         conversation_id: conversationId,
         user_id: userId,
         role,
         content,
       });
-      // Update conversation summary
-      await supabase
+      if (messageError) return { error: messageError.message };
+      // Message count remains database-owned (trigger/RPC). Never write an undefined value.
+      const { error: conversationError } = await supabase
         .from('ai_conversations')
         .update({
           last_message: content.slice(0, 100),
-          message_count: supabase.rpc ? undefined : undefined, // handled by counter below
           updated_at: new Date().toISOString(),
         })
         .eq('id', conversationId);
-    } catch { /* silent — not critical */ }
+      return { error: conversationError?.message ?? null };
+    } catch {
+      return { error: 'فشل حفظ الرسالة.' };
+    }
   },
 
   // ── Utility ───────────────────────────────────────────────────────────────
