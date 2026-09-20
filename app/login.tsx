@@ -1,6 +1,6 @@
 /*
  * Madrasaty — Authentication Screen (Login + Register)
- * RTL Arabic, secure password registration, secure error handling
+ * RTL Arabic, OTP-verified registration, secure error handling
  */
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -52,7 +52,7 @@ function mapAuthError(error: string): string {
 }
 
 // ─── Register Steps ───────────────────────────────────────────────────────────
-type RegisterStep = 'form' | 'success';
+type RegisterStep = 'form' | 'otp' | 'success';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -294,7 +294,7 @@ function LoginForm() {
 // ─── Register Form (3-step) ───────────────────────────────────────────────────
 
 function RegisterForm({ onLoginSwitch }: { onLoginSwitch: () => void }) {
-  const { createAccount, operationLoading } = useAuth();
+  const { sendOTP, verifyOTPAndLogin, operationLoading } = useAuth();
   const { showAlert } = useAlert();
   const router = useRouterInner();
 
@@ -302,11 +302,13 @@ function RegisterForm({ onLoginSwitch }: { onLoginSwitch: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [otp, setOtp] = useState('');
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
 
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [confirmError, setConfirmError] = useState('');
+  const [otpError, setOtpError] = useState('');
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
@@ -322,7 +324,6 @@ function RegisterForm({ onLoginSwitch }: { onLoginSwitch: () => void }) {
     setEmailError('');
     setPasswordError('');
     setConfirmError('');
-
     if (!email.trim() || !email.includes('@')) {
       setEmailError('أدخل بريداً إلكترونياً صحيحاً');
       valid = false;
@@ -342,101 +343,201 @@ function RegisterForm({ onLoginSwitch }: { onLoginSwitch: () => void }) {
     return valid;
   };
 
-  const handleCreateAccount = async () => {
+  const handleSendOtp = async () => {
     if (!validateForm()) return;
-
-    const { error, user } = await createAccount(email.trim(), password, {
-      username: email.trim().split('@')[0],
-    });
-
+    const { error } = await sendOTP(email.trim());
     if (error) {
-      showAlert('خطأ في إنشاء الحساب', mapAuthError(error), [{ text: 'حسناً' }]);
+      showAlert('خطأ', mapAuthError(error), [{ text: 'حسناً' }]);
       return;
     }
+    animateStep(() => setStep('otp'));
+  };
 
-    if (user) {
-      const profileResult = await userService.initializeAfterRegistration(user.id);
-      if (profileResult.error) {
-        showAlert('تنبيه', 'تم إنشاء الحساب، لكن تعذر تهيئة بعض بيانات الملف الشخصي. يمكنك المتابعة وسنحاول إصلاحها تلقائياً.', [{ text: 'حسناً' }]);
-      }
+  const handleVerifyOtp = async () => {
+    setOtpError('');
+    if (otp.length !== 4) {
+      setOtpError('أدخل الرمز المكوّن من 4 أرقام');
+      return;
     }
-
+    const { error, user } = await verifyOTPAndLogin(email.trim(), otp, { password });
+    if (error) {
+      setOtpError(mapAuthError(error));
+      return;
+    }
+    // Initialize Madrasaty profile fields
+    if (user) {
+      await userService.initializeAfterRegistration(user.id);
+    }
     animateStep(() => setStep('success'));
+    // Navigation to home is handled by the useEffect in LoginScreen after auth state updates
+  };
+
+  const handleResendOtp = async () => {
+    const { error } = await sendOTP(email.trim());
+    if (error) {
+      showAlert('خطأ', mapAuthError(error), [{ text: 'حسناً' }]);
+      return;
+    }
+    showAlert('تم الإرسال', 'تم إرسال رمز تحقق جديد إلى بريدك الإلكتروني.', [{ text: 'حسناً' }]);
   };
 
   return (
     <Animated.View style={[styles.form, { opacity: fadeAnim }]}>
+      {/* Step indicator */}
       <View style={styles.stepIndicator}>
-        {(['form', 'success'] as RegisterStep[]).map((s, i) => (
+        {(['form', 'otp', 'success'] as RegisterStep[]).map((s, i) => (
           <View key={s} style={styles.stepRow}>
-            <View style={[
-              styles.stepDot,
-              step === s && styles.stepDotActive,
-              step === 'success' && i === 0 ? styles.stepDotDone : null,
-            ]}>
-              {step === 'success' && i === 0 ? (
+            <View style={[styles.stepDot, step === s && styles.stepDotActive,
+              (step === 'otp' && i === 0) || (step === 'success' && i < 2)
+                ? styles.stepDotDone : null]}>
+              {((step === 'otp' && i === 0) || (step === 'success' && i < 2)) ? (
                 <MaterialIcons name="check" size={12} color={Colors.textOnPrimary} />
               ) : (
                 <Text style={styles.stepDotText}>{i + 1}</Text>
               )}
             </View>
-            {i < 1 && (
-              <View style={[
-                styles.stepLine,
-                step === 'success' ? styles.stepLineDone : null,
-              ]} />
-            )}
+            {i < 2 && <View style={[styles.stepLine, i < (['form', 'otp', 'success'].indexOf(step))
+              ? styles.stepLineDone : null]} />}
           </View>
         ))}
       </View>
 
+      {/* ── Step 1: Form ── */}
       {step === 'form' && (
         <>
           <Text style={styles.formTitle}>انضم إلى مدرستي 🎓</Text>
           <Text style={styles.formSubtitle}>أنشئ حسابك وابدأ رحلة التعلم اليوم</Text>
 
-          <Input label="البريد الإلكتروني" value={email} onChangeText={setEmail}
-            placeholder="example@email.com" keyboardType="email-address"
-            autoCapitalize="none" autoComplete="email" leftIcon="email"
-            error={emailError} textContentType="emailAddress" />
+          <Input
+            label="البريد الإلكتروني"
+            value={email}
+            onChangeText={setEmail}
+            placeholder="example@email.com"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            leftIcon="email"
+            error={emailError}
+            textContentType="emailAddress"
+          />
 
-          <Input label="كلمة المرور" value={password} onChangeText={setPassword}
-            placeholder="6 أحرف على الأقل" isPassword leftIcon="lock"
-            error={passwordError} hint="يجب أن تكون كلمة المرور 6 أحرف على الأقل"
-            textContentType="newPassword" />
+          <Input
+            label="كلمة المرور"
+            value={password}
+            onChangeText={setPassword}
+            placeholder="6 أحرف على الأقل"
+            isPassword
+            leftIcon="lock"
+            error={passwordError}
+            hint="يجب أن تكون كلمة المرور 6 أحرف على الأقل"
+            textContentType="newPassword"
+          />
 
-          <Input label="تأكيد كلمة المرور" value={confirmPassword} onChangeText={setConfirmPassword}
-            placeholder="أعد كتابة كلمة المرور" isPassword leftIcon="lock-outline"
-            error={confirmError} textContentType="newPassword"
-            onSubmitEditing={handleCreateAccount} returnKeyType="done" />
+          <Input
+            label="تأكيد كلمة المرور"
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            placeholder="أعد كتابة كلمة المرور"
+            isPassword
+            leftIcon="lock-outline"
+            error={confirmError}
+            textContentType="newPassword"
+            onSubmitEditing={handleSendOtp}
+            returnKeyType="done"
+          />
 
-          <Pressable style={styles.privacyRow} onPress={() => setPrivacyAccepted((v) => !v)}
-            accessibilityRole="checkbox" accessibilityState={{ checked: privacyAccepted }}>
+          {/* Privacy Policy Checkbox */}
+          <Pressable
+            style={styles.privacyRow}
+            onPress={() => setPrivacyAccepted((v) => !v)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: privacyAccepted }}
+          >
             <View style={[styles.checkbox, privacyAccepted && styles.checkboxChecked]}>
-              {privacyAccepted ? <MaterialIcons name="check" size={14} color="#FFFFFF" /> : null}
+              {privacyAccepted ? (
+                <MaterialIcons name="check" size={14} color="#FFFFFF" />
+              ) : null}
             </View>
             <View style={styles.privacyTextRow}>
               <Text style={styles.privacyText}>أوافق على </Text>
-              <TouchableOpacity onPress={() => router.push({ pathname: '/privacy', params: { returnAccept: 'true' } })}
-                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}>
+              <TouchableOpacity
+                onPress={() => router.push({ pathname: '/privacy', params: { returnAccept: 'true' } })}
+                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+              >
                 <Text style={styles.privacyLink}>سياسة الخصوصية وشروط الاستخدام</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
 
-          <Button label="إنشاء الحساب" onPress={handleCreateAccount}
-            loading={operationLoading} disabled={!privacyAccepted} size="lg"
-            style={[styles.submitBtn, !privacyAccepted && { opacity: 0.5 }]} />
+          <Button
+            label="إرسال رمز التحقق"
+            onPress={handleSendOtp}
+            loading={operationLoading}
+            disabled={!privacyAccepted}
+            size="lg"
+            style={[styles.submitBtn, !privacyAccepted && { opacity: 0.5 }]}
+          />
         </>
       )}
 
+      {/* ── Step 2: OTP Verification ── */}
+      {step === 'otp' && (
+        <>
+          <View style={styles.otpIconWrapper}>
+            <MaterialIcons name="mark-email-read" size={56} color={Colors.primary} />
+          </View>
+          <Text style={styles.formTitle}>تأكيد البريد الإلكتروني</Text>
+          <Text style={styles.otpDesc}>
+            أرسلنا رمز تحقق مكوّن من 4 أرقام إلى{'\n'}
+            <Text style={styles.otpEmail}>{email}</Text>
+          </Text>
+
+          <Input
+            label="رمز التحقق"
+            value={otp}
+            onChangeText={setOtp}
+            placeholder="أدخل الرمز المكوّن من 4 أرقام"
+            keyboardType="number-pad"
+            maxLength={4}
+            leftIcon="dialpad"
+            error={otpError}
+            textContentType="oneTimeCode"
+            onSubmitEditing={handleVerifyOtp}
+            returnKeyType="done"
+          />
+
+          <Button
+            label="تحقق وأنشئ الحساب"
+            onPress={handleVerifyOtp}
+            loading={operationLoading}
+            size="lg"
+            style={styles.submitBtn}
+          />
+
+          <View style={styles.resendRow}>
+            <Text style={styles.resendText}>لم يصلك الرمز؟ </Text>
+            <TouchableOpacity onPress={handleResendOtp} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.resendLink}>إعادة الإرسال</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity onPress={() => animateStep(() => setStep('form'))} style={styles.backBtn}>
+            <MaterialIcons name="arrow-forward" size={16} color={Colors.primary} />
+            <Text style={styles.backText}>تغيير البريد الإلكتروني</Text>
+          </TouchableOpacity>
+        </>
+      )}
+
+      {/* ── Step 3: Success ── */}
       {step === 'success' && (
         <View style={styles.successContainer}>
           <View style={styles.successIcon}>
             <MaterialIcons name="check-circle" size={80} color={Colors.success} />
           </View>
           <Text style={styles.successTitle}>مرحباً بك في مدرستي! 🎉</Text>
-          <Text style={styles.successText}>تم إنشاء حسابك بنجاح. أنت الآن جزء من مجتمع التعلم الذكي.</Text>
+          <Text style={styles.successText}>
+            تم إنشاء حسابك بنجاح. أنت الآن جزء من مجتمع التعلم الذكي.
+          </Text>
           <View style={styles.successBadge}>
             <Text style={styles.successBadgeText}>⭐ طالب جديد</Text>
           </View>
