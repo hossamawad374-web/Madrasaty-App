@@ -32,7 +32,7 @@ export function useAITutor(initialContext: AIContext | null = null) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const abortRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   // Update welcome message when context changes
   const updateContext = useCallback((newContext: AIContext | null) => {
@@ -41,7 +41,7 @@ export function useAITutor(initialContext: AIContext | null = null) {
     setStreamingContent('');
     setIsStreaming(false);
     setConversationId(null);
-    abortRef.current = true;
+    abortRef.current?.abort();
   }, []);
 
   const setMode = useCallback((mode: AIMode) => {
@@ -62,7 +62,9 @@ export function useAITutor(initialContext: AIContext | null = null) {
       setMessages((prev) => [...prev, userMsg]);
       setIsStreaming(true);
       setStreamingContent('');
-      abortRef.current = false;
+      const controller = new AbortController();
+      abortRef.current?.abort();
+      abortRef.current = controller;
 
       // Ensure conversation exists in DB (if authenticated)
       let convId = conversationId;
@@ -95,12 +97,12 @@ export function useAITutor(initialContext: AIContext | null = null) {
         history,
         context,
         (chunk) => {
-          if (abortRef.current) return;
+          if (controller.signal.aborted) return;
           accumulated += chunk;
           setStreamingContent(accumulated);
         },
         (fullText) => {
-          if (abortRef.current) return;
+          if (controller.signal.aborted) return;
           const aiMsg: ChatMessage = {
             id: nextId(),
             role: 'assistant',
@@ -116,19 +118,20 @@ export function useAITutor(initialContext: AIContext | null = null) {
           }
         },
         (error) => {
-          if (abortRef.current) return;
+          if (controller.signal.aborted) return;
           setMessages((prev) => [
             ...prev,
             {
               id: nextId(),
               role: 'assistant',
-              content: `⚠️ ${error}\n\nاضغط على إعادة المحاولة أو اسأل سؤالاً آخر.`,
+              content: `⚠️ ${error.message}\n\nاضغط على إعادة المحاولة أو اسأل سؤالاً آخر.`,
               timestamp: new Date(),
             },
           ]);
           setStreamingContent('');
           setIsStreaming(false);
-        }
+        },
+        controller.signal
       );
     },
     [messages, isStreaming, context, conversationId, user]
@@ -147,7 +150,7 @@ export function useAITutor(initialContext: AIContext | null = null) {
   }, [messages, sendMessage]);
 
   const clearChat = useCallback(() => {
-    abortRef.current = true;
+    abortRef.current?.abort();
     setMessages([buildWelcome(context)]);
     setStreamingContent('');
     setIsStreaming(false);
