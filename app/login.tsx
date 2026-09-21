@@ -486,7 +486,7 @@ function RegisterForm({ onLoginSwitch }: { onLoginSwitch: () => void }) {
           </View>
           <Text style={styles.formTitle}>تأكيد البريد الإلكتروني</Text>
           <Text style={styles.otpDesc}>
-            أرسلنا رسالة تفعيل إلى{\'\\n\'}
+            أرسلنا رسالة تفعيل إلى{'\n'}
             <Text style={styles.otpEmail}>{email}</Text>
           </Text>
 
