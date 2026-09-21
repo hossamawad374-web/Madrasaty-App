@@ -383,18 +383,18 @@ function RegisterForm({ onLoginSwitch }: { onLoginSwitch: () => void }) {
     <Animated.View style={[styles.form, { opacity: fadeAnim }]}>
       {/* Step indicator */}
       <View style={styles.stepIndicator}>
-        {(['form', 'otp', 'success'] as RegisterStep[]).map((s, i) => (
+        {(['form', 'confirmation', 'success'] as RegisterStep[]).map((s, i) => (
           <View key={s} style={styles.stepRow}>
             <View style={[styles.stepDot, step === s && styles.stepDotActive,
-              (step === 'otp' && i === 0) || (step === 'success' && i < 2)
+              (step === 'confirmation' && i === 0) || (step === 'success' && i < 2)
                 ? styles.stepDotDone : null]}>
-              {((step === 'otp' && i === 0) || (step === 'success' && i < 2)) ? (
+              {((step === 'confirmation' && i === 0) || (step === 'success' && i < 2)) ? (
                 <MaterialIcons name="check" size={12} color={Colors.textOnPrimary} />
               ) : (
                 <Text style={styles.stepDotText}>{i + 1}</Text>
               )}
             </View>
-            {i < 2 && <View style={[styles.stepLine, i < (['form', 'otp', 'success'].indexOf(step))
+            {i < 2 && <View style={[styles.stepLine, i < (['form', 'confirmation', 'success'].indexOf(step))
               ? styles.stepLineDone : null]} />}
           </View>
         ))}
@@ -486,8 +486,7 @@ function RegisterForm({ onLoginSwitch }: { onLoginSwitch: () => void }) {
           </View>
           <Text style={styles.formTitle}>تأكيد البريد الإلكتروني</Text>
           <Text style={styles.otpDesc}>
-            أرسلنا رسالة تفعيل إلى{'
-'}
+            أرسلنا رسالة تفعيل إلى{\'\\n\'}
             <Text style={styles.otpEmail}>{email}</Text>
           </Text>
 
