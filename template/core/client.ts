@@ -27,11 +27,11 @@ class SupabaseManager {
       console.log(`[Template:Client] Creating Supabase client instance #${this.creationCount}`);
       
       const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-      const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+      const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
       
-      if (!supabaseUrl || !supabaseAnonKey) {
+      if (!supabaseUrl || !supabaseKey) {
         const errorMsg = '[Template:Client] Supabase environment variables missing\n' +
-          'Please check EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in .env file';
+          'Please check EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or legacy EXPO_PUBLIC_SUPABASE_ANON_KEY) in .env file';
         console.error(errorMsg);
         throw new Error(errorMsg);
       }
@@ -41,7 +41,7 @@ class SupabaseManager {
         console.warn('[Template:Client] This may indicate a development environment hot reload or architecture issue.');
       }
       
-      this.instance = createClient(supabaseUrl, supabaseAnonKey, {
+      this.instance = createClient(supabaseUrl, supabaseKey, {
         auth: {
           storage: this.createStorageAdapter(),
           autoRefreshToken: true,
