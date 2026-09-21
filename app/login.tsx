@@ -56,13 +56,13 @@ function mapAuthError(error: string): string {
   if (e.includes('network') || e.includes('fetch'))
     return 'تعذر الاتصال بخدمة المصادقة. تحقق من الإنترنت ثم حاول مرة أخرى.';
   if (e.includes('otp') || e.includes('token'))
-    return 'رمز التحقق غير صحيح أو منتهي الصلاحية.';
+    return 'رمز أو رابط التحقق غير صحيح أو منتهي الصلاحية.';
 
-  return 'تعذر إرسال رمز التحقق: ' + error;
+  return 'تعذر تنفيذ عملية المصادقة: ' + error;
 }
 
 // ─── Register Steps ───────────────────────────────────────────────────────────
-type RegisterStep = 'form' | 'otp' | 'success';
+type RegisterStep = 'form' | 'confirmation' | 'success';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -304,7 +304,7 @@ function LoginForm() {
 // ─── Register Form (3-step) ───────────────────────────────────────────────────
 
 function RegisterForm({ onLoginSwitch }: { onLoginSwitch: () => void }) {
-  const { sendOTP, verifyOTPAndLogin, operationLoading } = useAuth();
+  const { signUpWithPassword, operationLoading } = useAuth();
   const { showAlert } = useAlert();
   const router = useRouterInner();
 
@@ -312,13 +312,11 @@ function RegisterForm({ onLoginSwitch }: { onLoginSwitch: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [otp, setOtp] = useState('');
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
 
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [confirmError, setConfirmError] = useState('');
-  const [otpError, setOtpError] = useState('');
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
@@ -353,42 +351,32 @@ function RegisterForm({ onLoginSwitch }: { onLoginSwitch: () => void }) {
     return valid;
   };
 
-  const handleSendOtp = async () => {
+  const handleRegister = async () => {
     if (!validateForm()) return;
-    const { error } = await sendOTP(email.trim());
-    if (error) {
-      showAlert('خطأ', mapAuthError(error), [{ text: 'حسناً' }]);
-      return;
-    }
-    animateStep(() => setStep('otp'));
-  };
 
-  const handleVerifyOtp = async () => {
-    setOtpError('');
-    if (otp.length !== 6) {
-      setOtpError('أدخل الرمز المكوّن من 6 أرقام');
-      return;
-    }
-    const { error, user } = await verifyOTPAndLogin(email.trim(), otp, { password });
+    const { error, user, needsEmailConfirmation } = await signUpWithPassword(
+      email.trim(),
+      password,
+    );
+
     if (error) {
-      setOtpError(mapAuthError(error));
+      showAlert('خطأ في إنشاء الحساب', mapAuthError(error), [{ text: 'حسناً' }]);
       return;
     }
-    // Initialize Madrasaty profile fields
+
+    // With email confirmation enabled, Supabase returns the new user without a session.
+    // The password is already stored securely by Supabase; the email step only confirms ownership.
+    if (needsEmailConfirmation) {
+      animateStep(() => setStep('confirmation'));
+      return;
+    }
+
+    // If email confirmation is disabled, the session is already active.
     if (user) {
       await userService.initializeAfterRegistration(user.id);
     }
-    animateStep(() => setStep('success'));
-    // Navigation to home is handled by the useEffect in LoginScreen after auth state updates
-  };
 
-  const handleResendOtp = async () => {
-    const { error } = await sendOTP(email.trim());
-    if (error) {
-      showAlert('خطأ', mapAuthError(error), [{ text: 'حسناً' }]);
-      return;
-    }
-    showAlert('تم الإرسال', 'تم إرسال رمز تحقق جديد إلى بريدك الإلكتروني.', [{ text: 'حسناً' }]);
+    animateStep(() => setStep('success'));
   };
 
   return (
@@ -452,7 +440,7 @@ function RegisterForm({ onLoginSwitch }: { onLoginSwitch: () => void }) {
             leftIcon="lock-outline"
             error={confirmError}
             textContentType="newPassword"
-            onSubmitEditing={handleSendOtp}
+            onSubmitEditing={handleRegister}
             returnKeyType="done"
           />
 
@@ -480,8 +468,8 @@ function RegisterForm({ onLoginSwitch }: { onLoginSwitch: () => void }) {
           </Pressable>
 
           <Button
-            label="إرسال رمز التحقق"
-            onPress={handleSendOtp}
+            label="إنشاء الحساب وإرسال رسالة التفعيل"
+            onPress={handleRegister}
             loading={operationLoading}
             disabled={!privacyAccepted}
             size="lg"
@@ -490,48 +478,35 @@ function RegisterForm({ onLoginSwitch }: { onLoginSwitch: () => void }) {
         </>
       )}
 
-      {/* ── Step 2: OTP Verification ── */}
-      {step === 'otp' && (
+      {/* ── Step 2: Email Confirmation ── */}
+      {step === 'confirmation' && (
         <>
           <View style={styles.otpIconWrapper}>
             <MaterialIcons name="mark-email-read" size={56} color={Colors.primary} />
           </View>
           <Text style={styles.formTitle}>تأكيد البريد الإلكتروني</Text>
           <Text style={styles.otpDesc}>
-            أرسلنا رمز تحقق مكوّن من 6 أرقام إلى{'\n'}
+            أرسلنا رسالة تفعيل إلى{'
+'}
             <Text style={styles.otpEmail}>{email}</Text>
           </Text>
 
-          <Input
-            label="رمز التحقق"
-            value={otp}
-            onChangeText={setOtp}
-            placeholder="أدخل الرمز المكوّن من 6 أرقام"
-            keyboardType="number-pad"
-            maxLength={6}
-            leftIcon="dialpad"
-            error={otpError}
-            textContentType="oneTimeCode"
-            onSubmitEditing={handleVerifyOtp}
-            returnKeyType="done"
-          />
+          <Text style={styles.confirmationText}>
+            افتح رسالة التفعيل واضغط على رابط تأكيد البريد الإلكتروني. بعد تأكيد بريدك،
+            ارجع إلى التطبيق وسجّل الدخول باستخدام بريدك الإلكتروني وكلمة المرور التي أنشأتهما.
+          </Text>
 
           <Button
-            label="تحقق وأنشئ الحساب"
-            onPress={handleVerifyOtp}
-            loading={operationLoading}
+            label="العودة إلى تسجيل الدخول"
+            onPress={onLoginSwitch}
             size="lg"
             style={styles.submitBtn}
           />
 
-          <View style={styles.resendRow}>
-            <Text style={styles.resendText}>لم يصلك الرمز؟ </Text>
-            <TouchableOpacity onPress={handleResendOtp} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.resendLink}>إعادة الإرسال</Text>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity onPress={() => animateStep(() => setStep('form'))} style={styles.backBtn}>
+          <TouchableOpacity
+            onPress={() => animateStep(() => setStep('form'))}
+            style={styles.backBtn}
+          >
             <MaterialIcons name="arrow-forward" size={16} color={Colors.primary} />
             <Text style={styles.backText}>تغيير البريد الإلكتروني</Text>
           </TouchableOpacity>
@@ -785,23 +760,15 @@ const styles = StyleSheet.create({
     fontWeight: FontWeight.semibold,
     includeFontPadding: false,
   },
-  resendRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: Spacing.md,
-  },
-  resendText: {
-    fontSize: FontSize.sm,
+  confirmationText: {
+    fontSize: FontSize.base,
     color: Colors.textMuted,
+    textAlign: 'center',
     writingDirection: 'rtl',
     includeFontPadding: false,
-  },
-  resendLink: {
-    fontSize: FontSize.sm,
-    color: Colors.primary,
-    fontWeight: FontWeight.bold,
-    includeFontPadding: false,
+    lineHeight: FontSize.base * 1.8,
+    marginBottom: Spacing.lg,
+    paddingHorizontal: Spacing.sm,
   },
   backBtn: {
     flexDirection: 'row',
