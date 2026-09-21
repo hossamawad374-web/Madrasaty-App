@@ -18,7 +18,7 @@ class ConfigManager {
     if (this.config) {
       console.warn('[Template:Config] Configuration already set, updating...');
     }
-    
+
     this.config = { ...config };
   }
 
@@ -31,13 +31,17 @@ class ConfigManager {
 
   private createDefaultConfig(): OnSpaceConfig {
     const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+    const supabaseKey =
+      process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+      process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
     let authConfig;
     let supabaseConfig;
 
-    if (!supabaseUrl || !supabaseAnonKey) {
-          console.warn('[Template:Config] Supabase environment variables missing, automatically disabling auth module');
+    if (!supabaseUrl || !supabaseKey) {
+      console.warn(
+        '[Template:Config] Supabase environment variables missing, automatically disabling auth module'
+      );
       authConfig = false;
     } else {
       authConfig = {
@@ -46,7 +50,7 @@ class ConfigManager {
       };
       supabaseConfig = {
         url: supabaseUrl,
-        anonKey: supabaseAnonKey,
+        anonKey: supabaseKey,
       };
     }
 
@@ -110,17 +114,25 @@ export const createConfig = (options: CreateConfigOptions = {}): OnSpaceConfig =
 
   let supabaseConfig;
   if (authConfig !== false) {
-    const supabaseUrl = options.supabase?.url || process.env.EXPO_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = options.supabase?.anonKey || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+    const supabaseUrl =
+      options.supabase?.url || process.env.EXPO_PUBLIC_SUPABASE_URL;
+    const supabaseKey =
+      options.supabase?.anonKey ??
+      process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+      process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
-    if (!supabaseUrl || !supabaseAnonKey) {
-      console.warn('[Template:Config] Auth feature enabled but Supabase configuration missing, automatically disabling auth module');
-      console.warn('[Template:Config] Please check EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in .env file');
+    if (!supabaseUrl || !supabaseKey) {
+      console.warn(
+        '[Template:Config] Auth feature enabled but Supabase configuration missing, automatically disabling auth module'
+      );
+      console.warn(
+        '[Template:Config] Please check EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or legacy EXPO_PUBLIC_SUPABASE_ANON_KEY) in .env file'
+      );
       authConfig = false;
     } else {
       supabaseConfig = {
         url: supabaseUrl,
-        anonKey: supabaseAnonKey,
+        anonKey: supabaseKey,
       };
     }
   }
