@@ -90,7 +90,7 @@ export const aiTutorService = {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session.access_token}`,
             // This is the public Supabase project key, never a service-role key.
-            'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
+            'apikey': process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
           },
           body: JSON.stringify({ messages, context }),
           signal,
