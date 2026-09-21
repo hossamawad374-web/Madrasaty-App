@@ -1032,7 +1032,7 @@ const styles = StyleSheet.create({
     }) as object),
   },
   sendBtnDisabled: {
-    backgroundColor: Colors.textHint + '!important',
+    backgroundColor: Colors.textHint,
     opacity: 0.55,
   },
 });
